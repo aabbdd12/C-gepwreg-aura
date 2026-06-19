@@ -1,0 +1,73 @@
+# gepwreg — Percentile Weights Regression with analytical standard errors
+
+##description
+{cmd:gepwreg} estimates the Percentile Weights Regression (PWR) of
+{bf:Araar (2016, 2023, 2026)}. It measures the local marginal effect
+{it:dy/dx} for observations whose {bf:unconditional outcome rank} sits near a
+target percentile {it:tau} — assigning Gaussian kernel weights centred at
+{it:tau} in rank space and fitting weighted least squares.
+
+Unlike conditional quantile regression ({help:qreg}-style), the ranking uses
+the {bf:dependent variable} itself, not a predicted component; unlike
+unconditional quantile (RIF) regression, the coefficient is a local {it:slope},
+not a location shift.
+
+The three steps: (1) weighted empirical CDF rank {it:p_i = F_n(y_i)};
+(2) kernel weight {it:w_i = exp(-(p_i - tau)^2 / 4h^2) / (h*sqrt(2*pi)*n)};
+(3) WLS of {it:depvar} on the regressors with weights {it:w_i}.
+
+##syntax
+{cmd:GEPWreg} {it:depvar} [{it:indepvars}] [{cmd:if} {it:exp}] [{cmd:in} {it:range}] [{it:weight}] [{cmd:,} {it:options}]
+
+{it:indepvars} may include factor variables {cmd:i.}{it:var} (the base level is
+dropped). {cmd:fweight}s, {cmd:aweight}s and {cmd:pweight}s are allowed.
+
+##options
+{opt percentile(#)}  target percentile {it:tau} in (0,1); default 0.5 (median).
+{opt silverman}  use the Silverman rule instead of the MSE-optimal default.
+{opt cband(#)}  Silverman constant c0 (also the optimal-rule pilot); default 0.9.
+{opt band(#)}  manual fixed bandwidth (overrides optimal / Silverman).
+{opt rankvar(var)}  rank observations on {it:var} instead of {it:depvar}.
+{opt vce(svy)}  Taylor linearisation SE under the declared {help:svyset} design.
+{opt level(#)}  confidence level; default 95.
+{opt noconstant}  suppress the constant term.
+
+{bf:Bandwidth.} The {bf:MSE-optimal} two-step plug-in is the {bf:default}
+(adapts {it:h} to {it:tau} via the local curvature). Use {opt silverman} for a
+fixed-rule bandwidth or {opt band(#)} for a manual value.
+
+##remarks
+{bf:Standard errors.} If a survey design is declared via {help:svyset} (or
+{opt vce(svy)}), Taylor linearisation SE is used; otherwise IF-corrected
+analytical SE (Deville 1999), which accounts for the sampling variability of
+the estimated kernel weights. Naive WLS SE (weights treated as fixed) are
+{it:inconsistent} and stored only for reference.
+
+{bf:Sparse cells.} When a factor indicator has kernel effective cell size below
+{it:max(30, 5k)}, its coefficient is flagged unreliable — prefer bootstrap SE.
+
+##stored_results
+{res:e(b)} coefficient vector; {res:e(V)} main VCV (Taylor if svy, else IF);
+{res:e(V_naive)} naive WLS VCV. {res:e(N)} obs; {res:e(tau)} percentile;
+{res:e(h)} bandwidth; {res:e(N_eff)} kernel effective sample size;
+{res:e(bw_method)} {bf:MSE-optimal} / Silverman / Manual; {res:e(SE_type)}.
+
+##examples
+. use bkf98I
+. gen lexp = log(exppc)
+. gen fw   = size*weight
+. gepwreg lexp size i.gse [pw=fw], per(0.5)
+. gepwreg lexp size i.gse [pw=fw], per(0.5) silverman
+. svyset psu [pw=fw], strata(strata)
+. gepwreg lexp size i.gse, per(0.5) vce(svy)
+. gepwreg lexp size [pw=fw], per(0.25) rankvar(exppc)
+
+##author
+Abdelkrim Araar — Universite Laval & Partnership for Economic Policy (PEP).
+AURA port of the Stata {cmd:gepwreg} package (v1.3).
+
+{bf:Citation.} Araar, Abdelkrim. (2026). Exploring Heterogeneous Effects:
+Quantile Models and Percentile Weights Regression. Zenodo.
+{url:https://doi.org/10.5281/zenodo.20315684}
+
+See also: {help:regress}, {help:svyset}, {help:svy}

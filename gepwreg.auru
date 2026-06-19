@@ -1,0 +1,285 @@
+# AI-generated draft — review before use.
+"""gepwreg — Percentile Weights Regression (Araar 2016/2023/2026).
+
+AURA port of the Stata gepwreg package (v1.3).  Estimates the local derivative
+dy/dx at a target percentile tau of the outcome (or rank variable) distribution
+via Gaussian kernel weights in rank space + WLS, with analytical IF-corrected
+standard errors (Deville 1999) — and Taylor linearisation under svyset.
+
+Syntax
+    gepwreg depvar [indepvars] [if] [in] [weight] ,
+        [ percentile(#) silverman cband(#) band(#) rankvar(var)
+          vce(svy) level(#) noconstant ]
+
+Bandwidth: MSE-optimal two-step plug-in by DEFAULT; `silverman` or `band(#)`
+override.  Validated against Stata gepwreg v1.3 on bkf98I.dta.
+"""
+import numpy as np
+import pandas as pd
+from scipy.stats import norm
+
+from core import tables
+
+
+# ── Mata-faithful core (validated vs Stata v1.3) ─────────────────────────────
+
+def _gepwe_wp(y, fw, tau, cband, band_in, zrank=None):
+    """(w, pc, h): kernel weights, weighted CDF ranks, bandwidth.
+    Ties get the same rank F_n(z) (paper eq 3) → reproducible."""
+    n = len(y)
+    z_use = zrank if (zrank is not None and len(zrank) == n) else y
+    order = np.argsort(z_use, kind="stable")
+    fw_s = fw[order]
+    pc_s = np.cumsum(fw_s) / fw_s.sum()
+    pc_s = pd.Series(pc_s).groupby(z_use[order]).transform("max").to_numpy()
+    pc_sorted = np.sort(pc_s, kind="stable")
+    q25 = pc_sorted[int(np.ceil(0.25 * n)) - 1]
+    q75 = pc_sorted[int(np.ceil(0.75 * n)) - 1]
+    tmp = min((q75 - q25) / 1.34, np.sqrt(np.var(pc_s, ddof=1)))
+    h = cband * tmp * n ** (-0.2) if band_in == 0 else band_in
+    u = (pc_s - tau) / h
+    w_s = np.exp(-0.25 * u ** 2) / (h * np.sqrt(2 * np.pi) * n)
+    w = np.zeros(n); pc = np.zeros(n)
+    w[order] = w_s; pc[order] = pc_s
+    return w, pc, h
+
+
+def _hopt(y, fw, tau, cband, n):
+    """MSE-optimal bandwidth via two-step plug-in (paper Algorithm 1)."""
+    _, _, h_sil = _gepwe_wp(y, fw, tau, cband, 0.0)
+    hp = 2 * h_sil
+    d = 0.02
+    w_lo, _, _ = _gepwe_wp(y, fw, tau - d, cband, hp); mu_lo = np.sum(w_lo * y) / np.sum(w_lo)
+    w_md, _, _ = _gepwe_wp(y, fw, tau, cband, hp);     mu_md = np.sum(w_md * y) / np.sum(w_md)
+    w_hi, _, _ = _gepwe_wp(y, fw, tau + d, cband, hp); mu_hi = np.sum(w_hi * y) / np.sum(w_hi)
+    curv = (mu_hi - 2 * mu_md + mu_lo) / d ** 2
+    sigma2 = np.sum(w_md * (y - mu_md) ** 2) / np.sum(w_md)
+    if abs(curv) < 1e-8:
+        curv = 1e-8
+    h_star = (sigma2 / (8 * n * np.sqrt(2 * np.pi) * curv ** 2)) ** 0.2
+    return min(5.0 * h_sil, max(0.3 * h_sil, h_star))
+
+
+def _wls(X, y, w):
+    XtW = (X * w[:, None]).T
+    beta, *_ = np.linalg.lstsq(XtW @ X, XtW @ y, rcond=None)
+    return beta
+
+
+def _revcumsum(M):
+    return np.cumsum(M[::-1], axis=0)[::-1]
+
+
+def _psi(X, y, w, pc, h, tau, beta, z_for_order):
+    """IF score psi_j = w_j x_j e_j + (1/n) sum_{z_i>=z_j} dw_i x_i e_i."""
+    n, k = X.shape
+    e = y - X @ beta
+    dw = (-0.5 / h ** 2) * (pc - tau) * w
+    S_dir = X * (w * e)[:, None]
+    dS = X * (dw * e)[:, None]
+    order = np.argsort(z_for_order, kind="stable")
+    revCS = np.zeros((n, k))
+    revCS[order] = _revcumsum(dS[order])
+    return S_dir + revCS / n
+
+
+def _se_IF(X, y, w, pc, h, tau, beta, z_ord):
+    n = len(y)
+    Ainv = np.linalg.pinv((X * w[:, None]).T @ X / n)
+    psi = _psi(X, y, w, pc, h, tau, beta, z_ord)
+    return Ainv @ (psi.T @ psi / n) @ Ainv / n
+
+
+def _se_naive(X, y, w, beta):
+    n, k = X.shape
+    e = y - X @ beta
+    Ainv = np.linalg.pinv((X * w[:, None]).T @ X / n)
+    s2 = np.sum(w * e ** 2) / (n - k)
+    return s2 * Ainv / n
+
+
+def _se_svy(X, y, w, pc, h, tau, beta, psu, strata, z_ord):
+    n, k = X.shape
+    Ainv = np.linalg.pinv((X * w[:, None]).T @ X / n)
+    psi = _psi(X, y, w, pc, h, tau, beta, z_ord)
+    meat = np.zeros((k, k))
+    n_strata = n_psu = 0
+    for hh in np.unique(strata):
+        mh = strata == hh
+        ph = np.unique(psu[mh]); n_h = len(ph)
+        n_psu += n_h
+        if n_h < 2:
+            continue
+        n_strata += 1
+        Z = np.array([psi[mh & (psu == p)].sum(0) for p in ph])
+        dev = Z - Z.mean(0)
+        meat += (n_h / (n_h - 1)) * (dev.T @ dev)
+    return Ainv @ meat @ Ainv / n ** 2, n_strata, n_psu
+
+
+def _sparse_cells(X, names, w, k):
+    """Indicator cols with kernel effective cell size < max(30,5k) (Remark 3)."""
+    thr = max(30, 5 * k)
+    out = []
+    for j in range(X.shape[1]):
+        col = X[:, j]
+        if names[j] == "_cons" or not np.all(np.isin(np.unique(col), (0.0, 1.0))):
+            continue
+        m = w[col == 1]
+        neff = (m.sum() ** 2 / np.sum(m ** 2)) if (m.size and np.sum(m ** 2)) else 0.0
+        if neff < thr:
+            out.append(names[j])
+    return out
+
+
+# ── design (i.factor → drop-first, names "var:level") ────────────────────────
+
+def _build_design(df, terms, add_cons):
+    cols, names = [], []
+    for t in terms:
+        if t.startswith("i."):
+            v = t[2:]
+            levels = np.sort(df[v].dropna().unique())
+            for lev in levels[1:]:
+                cols.append((df[v].to_numpy() == lev).astype(float))
+                names.append(f"{v}:{int(lev)}")
+        else:
+            cols.append(pd.to_numeric(df[t], errors="coerce").to_numpy())
+            names.append(t)
+    if add_cons:
+        cols.append(np.ones(len(df)))
+        names.append("_cons")
+    return np.column_stack(cols), names
+
+
+# ── command entry ─────────────────────────────────────────────────────────────
+
+def run(session, parsed):
+    df = parsed.work_df(session)
+    if df is None or len(df) == 0:
+        return "Error: no observations (load data / check if-in)."
+
+    depvar = parsed.depvar()
+    terms = parsed.indepvars()
+    if not depvar:
+        return "Error: gepwreg requires a dependent variable."
+
+    # ── options ──────────────────────────────────────────────────────────────
+    def _num(name, alt, dflt):
+        v = parsed.opt(name, parsed.opt(alt, None))
+        try:
+            return float(v) if v not in (None, True) else dflt
+        except (TypeError, ValueError):
+            return dflt
+    tau = _num("percentile", "per", 0.5)
+    cband = _num("cband", "cband", 0.9)
+    band = _num("band", "band", 0.0)
+    level = int(_num("level", "l", 95))
+    if not (0.0 < tau < 1.0):
+        return "Error: percentile() must be strictly between 0 and 1."
+    add_cons = not (parsed.has_opt("noconstant") or parsed.has_opt("nocons"))
+    rankvar = parsed.opt("rankvar")
+    rankvar = rankvar if isinstance(rankvar, str) else None
+    vce = parsed.opt("vce")
+    do_svy = isinstance(vce, str) and vce.lower() in ("svy", "survey", "linearized")
+
+    # ── bandwidth method (MSE-optimal default) ───────────────────────────────
+    if band:
+        bw_label = "Manual"
+    elif parsed.has_opt("silverman") or parsed.has_opt("sil"):
+        bw_label = "Silverman"
+    else:
+        bw_label = "MSE-optimal"
+
+    # ── assemble the analysis frame ──────────────────────────────────────────
+    plain = [t[2:] if t.startswith("i.") else t for t in terms]
+    need = [depvar] + plain + ([rankvar] if rankvar else [])
+    wname = parsed.weight
+    svy = getattr(session, "svy", None) or {}
+    if not wname and do_svy:
+        wname = svy.get("weight")
+    psu_var = svy.get("psu") if do_svy else None
+    strata_var = svy.get("strata") if do_svy else None
+    for extra in (wname, psu_var, strata_var):
+        if extra and extra in df.columns and extra not in need:
+            need.append(extra)
+    missing = [v for v in need if v not in df.columns]
+    if missing:
+        return f"Error: variable(s) not found: {', '.join(missing)}"
+
+    sub = df[list(dict.fromkeys(need))].copy()
+    sub[depvar] = pd.to_numeric(sub[depvar], errors="coerce")
+    sub = sub.replace([np.inf, -np.inf], np.nan).dropna()
+    if len(sub) < len(plain) + 2:
+        return "Error: too few valid observations after dropping missing."
+
+    y = sub[depvar].to_numpy()
+    n = len(y)
+    fw = (pd.to_numeric(sub[wname], errors="coerce").to_numpy()
+          if wname else np.ones(n))
+    zrank = pd.to_numeric(sub[rankvar], errors="coerce").to_numpy() if rankvar else None
+    X, names = _build_design(sub, terms, add_cons)
+
+    # ── bandwidth + fit ──────────────────────────────────────────────────────
+    if band:
+        band_use = band
+    elif bw_label == "Silverman":
+        band_use = 0.0
+    else:
+        z_for_h = zrank if zrank is not None else y
+        band_use = _hopt(z_for_h, fw, tau, cband, n)
+    w, pc, h = _gepwe_wp(y, fw, tau, cband, band_use, zrank)
+    n_eff = w.sum() ** 2 / np.sum(w ** 2)
+    beta = _wls(X, y, w)
+    z_ord = zrank if zrank is not None else y
+
+    if do_svy and psu_var and strata_var:
+        V, n_strata, n_psu = _se_svy(
+            X, y, w, pc, h, tau, beta,
+            sub[psu_var].to_numpy(), sub[strata_var].to_numpy(), z_ord)
+        se_type = "Taylor linearisation (survey design)"
+    else:
+        V = _se_IF(X, y, w, pc, h, tau, beta, z_ord)
+        n_strata = n_psu = None
+        se_type = "Analytical (Influence Function)"
+    Vn = _se_naive(X, y, w, beta)
+    se = np.sqrt(np.abs(np.diag(V)))
+    warn = _sparse_cells(X, names, w, X.shape[1])
+
+    # ── post e() ─────────────────────────────────────────────────────────────
+    session.post_results({
+        "b": beta.tolist(), "V": V.tolist(), "V_naive": Vn.tolist(),
+        "names": names, "N": n, "tau": tau, "h": h, "N_eff": n_eff,
+        "bw_method": bw_label, "SE_type": se_type, "cmd": "gepwreg",
+        "depvar": depvar, "level": level,
+    }, kind="e")
+
+    # ── output: banner + coefficient table ───────────────────────────────────
+    zc = norm.ppf(1 - (1 - level / 100) / 2)
+    rows = []
+    for nm, b, s in zip(names, beta, se):
+        if s > 0:
+            z = b / s
+            p = 2 * (1 - norm.cdf(abs(z)))
+            rows.append((nm, b, s, z, p, b - zc * s, b + zc * s))
+        else:
+            rows.append((nm, b, None, None, None, None, None))
+    table = tables.build_coefficient_table(
+        rows, depvar=depvar, se_label="Std. err.", stat_label="z",
+        ci_level=level, title="Percentile Weights Regression")
+
+    banner = (
+        f"Percentile Weights Regression\n"
+        f"{'-' * 60}\n"
+        f"  Target percentile (tau) = {tau:.4f}\n"
+        f"  Bandwidth (h)           = {h:.6f}  ({bw_label})\n"
+        f"  Ranking variable        = {rankvar or 'y (outcome)'}\n"
+        f"  Observations            = {n}\n"
+        f"  Kernel N_eff            = {n_eff:.1f}\n"
+        f"  SE                      = {se_type}"
+    )
+    out = [banner, table]
+    if warn:
+        out.append("Warning: kernel-sparse cell(s) (n_eff < max(30,5k)): "
+                    + ", ".join(warn) + " — SE unreliable; consider bootstrap.")
+    return out

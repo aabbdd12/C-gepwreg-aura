@@ -1,0 +1,3 @@
+# gepwreg — package menu (injects into Statistics > Econometrics)
+submenu Statistics > &Econometrics
+item Econometrics > "Percentile Weights Regression" : help gepwreg

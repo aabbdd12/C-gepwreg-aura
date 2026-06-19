@@ -1,0 +1,9 @@
+v 1.3
+d gepwreg. Percentile Weights Regression with analytical standard errors
+d Araar (2016, 2023, 2026): MSE-optimal bandwidth, IF / Taylor SE, survey design.
+a Abdelkrim Araar (Universite Laval / PEP)
+r scipy
+f gepwreg.auru
+f gepwreg.aurh
+f aurap.menu
+f bkf98I.dta
