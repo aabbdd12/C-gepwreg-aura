@@ -23,7 +23,7 @@ Validated to reproduce the Stata `gepwreg` v1.3 results on the Burkina Faso
 
 ## Installation (from AURA)
 ```
-pkg from "https://raw.githubusercontent.com/aabbdd12/gepwreg-aura/main/"
+pkg from "https://raw.githubusercontent.com/aabbdd12/C-gepwreg-aura/main/"
 pkg install gepwreg
 ```
 The command, help (`help gepwreg`), and the **Statistics → Econometrics →
