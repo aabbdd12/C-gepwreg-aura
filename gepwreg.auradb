@@ -1,0 +1,29 @@
+AURADB 1.0
+TITLE   Percentile Weights Regression (gepwreg)
+COMMAND gepwreg
+SIZE: AUTO
+
+GROUP "Model"
+  TEXT    t_dv  LABEL "Dependent variable"
+  VARNAME depvar
+  TEXT    t_iv  LABEL "Independent variables  (prefix i. for factors)"
+  VARLIST indepvars
+  TEXT    t_tau LABEL "Target percentile  tau  (0-1)"
+  EDIT    tau   DEFAULT "0.5" EMIT "percentile({})"
+  TEXT    t_rk  LABEL "Ranking variable  (blank = outcome)"
+  VARNAME rankvar EMIT "rankvar({})"
+
+GROUP "Bandwidth and Standard Errors"
+  CHECK   silverman LABEL "Silverman rule  (default: MSE-optimal plug-in)" EMIT "silverman"
+  TEXT    t_c0  LABEL "Pilot / Silverman constant  c0"
+  EDIT    cband DEFAULT "0.9" EMIT "cband({})"
+  TEXT    t_bd  LABEL "Manual bandwidth  (blank = automatic)"
+  EDIT    band  EMIT "band({})"
+  CHECK   svy   LABEL "Linearized SE under survey design  (svyset)" EMIT "vce(svy)"
+
+GROUP "Reporting"
+  TEXT    t_lv  LABEL "Confidence level"
+  EDIT    level DEFAULT "95" EMIT "level({})"
+  CHECK   noconstant LABEL "Suppress constant term" EMIT "noconstant"
+
+INJECT by, ifin, weights
