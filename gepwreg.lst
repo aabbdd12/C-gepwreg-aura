@@ -1,7 +1,8 @@
-v 1.4
+v 1.5
 d gepwreg. Percentile Weights Regression with analytical standard errors
 d Araar (2016, 2023, 2026): MSE-optimal bandwidth, IF / Taylor SE, survey design.
-d v1.4 adds the AURADB dialog box (db gepwreg / Statistics > Econometrics).
+d v1.5 redesigns the dialog: Model tab (Regression + Percentile weighting) and a
+d Bandwidth/SE tab (radio bandwidth selector + radio variance estimator).
 a Abdelkrim Araar (Universite Laval / PEP)
 r scipy
 f gepwreg.auru

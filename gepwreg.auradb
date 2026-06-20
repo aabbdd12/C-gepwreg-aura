@@ -3,27 +3,49 @@ TITLE   Percentile Weights Regression (gepwreg)
 COMMAND gepwreg
 SIZE: AUTO
 
-GROUP "Model"
-  TEXT    t_dv  LABEL "Dependent variable"
+TAB "Model"
+
+GROUP "Regression"
+  TEXT    t_dv  LABEL "Outcome variable  y"
   VARNAME depvar
-  TEXT    t_iv  LABEL "Independent variables  (prefix i. for factors)"
+  TEXT    t_iv  LABEL "Regressors  (prefix i. for factor variables)"
   VARLIST indepvars
-  TEXT    t_tau LABEL "Target percentile  tau  (0-1)"
+
+GROUP "Percentile weighting"
+  TEXT    t_tau LABEL "Target percentile  tau   (0 < tau < 1)"
   EDIT    tau   DEFAULT "0.5" EMIT "percentile({})"
-  TEXT    t_rk  LABEL "Ranking variable  (blank = outcome)"
+  TEXT    t_rk  LABEL "Rank households on   (blank = on the outcome y)"
   VARNAME rankvar EMIT "rankvar({})"
 
-GROUP "Bandwidth and Standard Errors"
-  CHECK   silverman LABEL "Silverman rule  (default: MSE-optimal plug-in)" EMIT "silverman"
+TAB "Bandwidth / SE"
+
+GROUP "Kernel bandwidth selector"
+  TEXT    t_bw  LABEL "Method"
+  CHOICE  bwmethod STYLE radio
+  {
+     "MSE-optimal plug-in"  EMIT ""
+     "Silverman rule"       EMIT "silverman"
+     "Manual"               EMIT ""
+  }
   TEXT    t_c0  LABEL "Pilot / Silverman constant  c0"
   EDIT    cband DEFAULT "0.9" EMIT "cband({})"
-  TEXT    t_bd  LABEL "Manual bandwidth  (blank = automatic)"
+  TEXT    t_bd  LABEL "Manual bandwidth  h"
   EDIT    band  EMIT "band({})"
-  CHECK   svy   LABEL "Linearized SE under survey design  (svyset)" EMIT "vce(svy)"
+
+GROUP "Standard errors"
+  TEXT    t_se  LABEL "Variance estimator"
+  CHOICE  semethod STYLE radio
+  {
+     "Analytical (influence function)"  EMIT ""
+     "Survey-linearized (Taylor)"       EMIT "vce(svy)"
+  }
 
 GROUP "Reporting"
-  TEXT    t_lv  LABEL "Confidence level"
+  TEXT    t_lv  LABEL "Confidence level  (%)"
   EDIT    level DEFAULT "95" EMIT "level({})"
-  CHECK   noconstant LABEL "Suppress constant term" EMIT "noconstant"
+  CHECK   noconstant LABEL "Suppress the constant term" EMIT "noconstant"
 
 INJECT by, ifin, weights
+
+SHOW cband WHEN bwmethod == "MSE-optimal plug-in" OR bwmethod == "Silverman rule"
+SHOW band  WHEN bwmethod == "Manual"
