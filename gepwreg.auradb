@@ -1,51 +1,54 @@
 AURADB 1.0
-TITLE   Percentile Weights Regression (gepwreg)
+TITLE   gepwreg - Percentile Weights Regression
 COMMAND gepwreg
-SIZE: AUTO
+SIZE: 900|680
 
+# ─────────────────────────── Model tab ───────────────────────────
+# Same variable-selection UX as regress: a pool with -> Continuous /
+# -> Factor (i.), a filter, Up/Down/Remove.  gepwreg supports i.factors.
 TAB "Model"
-
-GROUP "Regression"
-  TEXT    t_dv  LABEL "Outcome variable  y"
+  TEXT t_dep LABEL "Dependent variable  y:"
   VARNAME depvar
-  TEXT    t_iv  LABEL "Regressors  (prefix i. for factor variables)"
-  VARLIST indepvars
 
-GROUP "Percentile weighting"
-  TEXT    t_tau LABEL "Target percentile  tau   (0 < tau < 1)"
-  EDIT    tau   DEFAULT "0.5" EMIT "percentile({})"
-  TEXT    t_rk  LABEL "Rank households on   (blank = on the outcome y)"
+  VARSELECT xvars LABEL "Variable pool  (select -> add to either list)" CONTINUOUS "Continuous  (used as-is)" FACTOR "Categorical / Factor  (i. prefix added)" FILTER
+
+  GROUP "Percentile weighting"
+  TEXT t_tau LABEL "Target percentile  tau   (0 < tau < 1)"
+  EDIT tau   DEFAULT "0.5" EMIT "percentile({})"
+  TEXT t_rk  LABEL "Rank on variable  (blank = on the outcome y)"
   VARNAME rankvar EMIT "rankvar({})"
 
+  GROUP "Treatment of constant"
+  CHECK noconstant LABEL "Suppress constant term  (noconstant)" EMIT "noconstant"
+
+# ───────────────────────── Bandwidth / SE tab ────────────────────
 TAB "Bandwidth / SE"
-
-GROUP "Kernel bandwidth selector"
-  TEXT    t_bw  LABEL "Method"
-  CHOICE  bwmethod STYLE radio
+  TEXT t_bw LABEL "Kernel bandwidth selector:"
+  CHOICE bwmethod STYLE radio
   {
-     "MSE-optimal plug-in"  EMIT ""
-     "Silverman rule"       EMIT "silverman"
-     "Manual"               EMIT ""
+    "MSE-optimal plug-in"  EMIT ""
+    "Silverman rule"       EMIT "silverman"
+    "Manual"               EMIT ""
   }
-  TEXT    t_c0  LABEL "Pilot / Silverman constant  c0"
-  EDIT    cband DEFAULT "0.9" EMIT "cband({})"
-  TEXT    t_bd  LABEL "Manual bandwidth  h"
-  EDIT    band  EMIT "band({})"
+  TEXT t_c0 LABEL "Pilot / Silverman constant  c0"
+  EDIT cband DEFAULT "0.9" EMIT "cband({})"
+  TEXT t_bd LABEL "Manual bandwidth  h"
+  EDIT band  EMIT "band({})"
 
-GROUP "Standard errors"
-  TEXT    t_se  LABEL "Variance estimator"
-  CHOICE  semethod STYLE radio
+  TEXT t_se LABEL "Standard-error estimator:"
+  CHOICE semethod STYLE radio
   {
-     "Analytical (influence function)"  EMIT ""
-     "Survey-linearized (Taylor)"       EMIT "vce(svy)"
+    "Analytical (influence function)"  EMIT ""
+    "Survey-linearized (Taylor)"       EMIT "vce(svy)"
   }
 
-GROUP "Reporting"
-  TEXT    t_lv  LABEL "Confidence level  (%)"
-  EDIT    level DEFAULT "95" EMIT "level({})"
-  CHECK   noconstant LABEL "Suppress the constant term" EMIT "noconstant"
+  SHOW cband WHEN bwmethod == "MSE-optimal plug-in" OR bwmethod == "Silverman rule"
+  SHOW band  WHEN bwmethod == "Manual"
 
+# ───────────────────────── Reporting tab ─────────────────────────
+TAB "Reporting"
+  TEXT t_lv LABEL "Confidence level  (%)"
+  SPIN level MIN 50 MAX 99 STEP 1 DEFAULT "95" EMIT "level({})"
+
+# by / if / in and weights are contributed as their own tabs by the framework
 INJECT by, ifin, weights
-
-SHOW cband WHEN bwmethod == "MSE-optimal plug-in" OR bwmethod == "Silverman rule"
-SHOW band  WHEN bwmethod == "Manual"

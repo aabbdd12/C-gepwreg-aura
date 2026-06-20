@@ -1,8 +1,8 @@
-v 1.5
+v 1.6
 d gepwreg. Percentile Weights Regression with analytical standard errors
 d Araar (2016, 2023, 2026): MSE-optimal bandwidth, IF / Taylor SE, survey design.
-d v1.5 redesigns the dialog: Model tab (Regression + Percentile weighting) and a
-d Bandwidth/SE tab (radio bandwidth selector + radio variance estimator).
+d v1.6 builds the dialog on the regress base: same VARSELECT pool (-> Continuous /
+d -> Factor i., filter), plus gepwreg-specific tau / bandwidth / SE controls.
 a Abdelkrim Araar (Universite Laval / PEP)
 r scipy
 f gepwreg.auru
