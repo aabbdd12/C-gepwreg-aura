@@ -255,15 +255,33 @@ def run(session, parsed):
     }, kind="e")
 
     # ── output: banner + coefficient table ───────────────────────────────────
+    def _disp(nm):
+        """Resolve a 'var:level' factor name to its value label for display
+        (e.g. 'gse:2' -> 'gse:Wage-earner (private sector)'), so the table
+        shows labels grouped exactly like regress instead of bare codes.
+        e(names) keeps the canonical coded form for programmatic access."""
+        nm = str(nm)
+        if ":" in nm and nm != "_cons":
+            var, lev = nm.split(":", 1)
+            if lev.lstrip("-").isdigit() and hasattr(session, "label_value"):
+                try:
+                    lbl = session.label_value(var, int(lev))
+                    if isinstance(lbl, str) and lbl != str(int(lev)):
+                        return f"{var}:{lbl}"
+                except Exception:
+                    pass
+        return nm
+
     zc = norm.ppf(1 - (1 - level / 100) / 2)
     rows = []
     for nm, b, s in zip(names, beta, se):
+        dn = _disp(nm)
         if s > 0:
             z = b / s
             p = 2 * (1 - norm.cdf(abs(z)))
-            rows.append((nm, b, s, z, p, b - zc * s, b + zc * s))
+            rows.append((dn, b, s, z, p, b - zc * s, b + zc * s))
         else:
-            rows.append((nm, b, None, None, None, None, None))
+            rows.append((dn, b, None, None, None, None, None))
     table = tables.build_coefficient_table(
         rows, depvar=depvar, se_label="Std. err.", stat_label="z",
         ci_level=level, title="Percentile Weights Regression")
@@ -281,5 +299,6 @@ def run(session, parsed):
     out = [banner, table]
     if warn:
         out.append("Warning: kernel-sparse cell(s) (n_eff < max(30,5k)): "
-                    + ", ".join(warn) + " — SE unreliable; consider bootstrap.")
+                    + ", ".join(_disp(w) for w in warn)
+                    + " — SE unreliable; consider bootstrap.")
     return out

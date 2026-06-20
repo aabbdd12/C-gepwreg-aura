@@ -1,0 +1,36 @@
+*! gepwreg.demo — runnable demonstrations of gepwreg (Percentile Weights Regression)
+*! Run:  demo gepwreg list   |   demo gepwreg, number(1)
+*! Data: the Burkina Faso 1998 household survey (bkf98I.dta), shipped with the
+*!       package in gepwreg.demos/.
+
+#demo 1 | Median percentile weights regression
+*  The simplest use: regress per-capita expenditure (exppc) on household size,
+*  weighting toward the MEDIAN of the expenditure distribution (percentile 0.5).
+*  The bandwidth is chosen automatically (MSE-optimal plug-in) and the standard
+*  error is the analytical influence-function SE.
+use bkf98I.dta, clear
+gepwreg exppc size, percentile(0.5)
+
+#demo 2 | Categorical factors print their value labels
+*  Add the socio-economic group as a factor variable (i.gse).  The levels are
+*  shown with their value labels (Wage-earner, Artisan, Crop farmer, ...) and
+*  grouped exactly like regress — not as bare numeric codes.
+use bkf98I.dta, clear
+gepwreg exppc size i.gse, percentile(0.5)
+
+#demo 3 | A poorer versus a richer point of the distribution
+*  gepwreg weights around a chosen percentile of the OUTCOME, so the same model
+*  can be read at different points of the expenditure distribution.  Compare the
+*  household-size gradient at the 25th and the 75th percentile — the association
+*  need not be the same for poorer and richer households.
+use bkf98I.dta, clear
+gepwreg exppc size, percentile(0.25)
+gepwreg exppc size, percentile(0.75)
+
+#demo 4 | Survey-linearised standard errors
+*  bkf98I is a complex survey.  Declare the design (PSU + strata + sampling
+*  weight) with svyset, then ask for design-based Taylor-linearised SEs at the
+*  median with vce(svy).
+use bkf98I.dta, clear
+svyset psu [pw=weight], strata(strata)
+gepwreg exppc size i.zone, percentile(0.5) vce(svy)

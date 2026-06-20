@@ -1,12 +1,14 @@
-v 1.6
+v 1.7
 d gepwreg. Percentile Weights Regression with analytical standard errors
 d Araar (2016, 2023, 2026): MSE-optimal bandwidth, IF / Taylor SE, survey design.
-d v1.6 builds the dialog on the regress base: same VARSELECT pool (-> Continuous /
-d -> Factor i., filter), plus gepwreg-specific tau / bandwidth / SE controls.
+d v1.7: factor levels now print their value labels (like regress); adds a .demo
+d (try: demo gepwreg list) with the bundled Burkina Faso 1998 survey.
 a Abdelkrim Araar (Universite Laval / PEP)
 r scipy
 f gepwreg.auru
 f gepwreg.aurh
 f gepwreg.auradb
+f gepwreg.demo
+f gepwreg.demos/bkf98I.dta
 f aurap.menu
 f bkf98I.dta
