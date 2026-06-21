@@ -253,6 +253,11 @@ def run(session, parsed):
         "bw_method": bw_label, "SE_type": se_type, "cmd": "gepwreg",
         "depvar": depvar, "level": level,
     }, kind="e")
+    # Register for post-estimation (predict/test) — no statsmodels object, so
+    # pass b/V.  Guarded: stays compatible with AURA versions lacking the slot.
+    if hasattr(session, "set_estimation_model"):
+        session.set_estimation_model(result=None, cmd="gepwreg", depvar=depvar,
+                                     names=names, b=beta.tolist(), V=V.tolist())
 
     # ── output: banner + coefficient table ───────────────────────────────────
     def _disp(nm):

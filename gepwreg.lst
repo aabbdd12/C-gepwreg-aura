@@ -1,8 +1,8 @@
-v 1.7
+v 1.8
 d gepwreg. Percentile Weights Regression with analytical standard errors
 d Araar (2016, 2023, 2026): MSE-optimal bandwidth, IF / Taylor SE, survey design.
-d v1.7: factor levels now print their value labels (like regress); adds a .demo
-d (try: demo gepwreg list) with the bundled Burkina Faso 1998 survey.
+d v1.8: registers with AURA post-estimation (predict/test) via set_estimation_model
+d (guarded). v1.7: factor value labels (like regress) + a .demo (demo gepwreg list).
 a Abdelkrim Araar (Universite Laval / PEP)
 r scipy
 f gepwreg.auru
